@@ -25,6 +25,7 @@
 (defn offset* [v] v)
 
 (defn -fields** [data]
+  data
   (reduce str (butlast (reduce str (doall (map #(str (name %) ",") data))))))
 
 (defn fields* [flds allowed]
@@ -38,13 +39,17 @@
      :else (-fields** (filter v flds)))))
 
 (defn select* [table-name {:keys [fields where join order limit offset]}]
+  fields
+  where
+  join
+  order
+  offset
   (-> (str "SELECT " fields " FROM " table-name " ")
       (str (if-not (nil? where) (str " WHERE " where)))
       (str (if-not (nil? join) (str " JOIN " join)))
       (str (if-not (nil? order) (str " ORDER BY " order)))
       (str (if-not (nil? limit) (str " LIMIT " limit)))
       (str (if-not (nil? offset) (str " OFFSET " offset)))))
-
 
 (defmacro select [table-name & data]
   (let [;; Var containing allowed fields
@@ -216,7 +221,39 @@
   ;; 3) Создает следующие функции
   ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
   ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
-  )
+  
+  (defn helper-name* [table-name]
+    (.toLowerCase (str "select" "-" name "-" table-name)))
+  
+  (defn create-helpers* [table-name fields]
+    `(def ~(symbol (helper-name* table-name)) 1))
+  
+  (let [env# (loop [perms body, res []]
+               (let [[table-name _ fields] (take 3 perms)
+                     nxt (drop 3 perms)]
+                 (if (empty? nxt)
+                   res
+                  (recur nxt (conj res [(list 'quote table-name) (list 'quote fields)])))))]
+    `(doseq [item# ~env#] (apply create-helpers* item#))))
+
+(group Agent
+         proposal -> [person, phone, address, price]
+         agents -> [clients_id, proposal_id, agent])
+
+(macroexpand '(group Agent
+         proposal -> [person, phone, address, price]
+         agents -> [clients_id, proposal_id, agent]))
+
+(let [proposal-fields-var [:all]]
+  (macroexpand '(select proposal
+          (fields :all)
+          (where {:price 11})
+          (join agents (= agents.proposal_id proposal.id))
+          (order :f3)
+          (limit 5)
+          (offset 5))))
+
+select-agent-proposal
 
 (defmacro user [name & body]
   ;; Пример
