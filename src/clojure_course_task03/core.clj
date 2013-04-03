@@ -82,7 +82,6 @@
         ;; Accepts vector [[:where (where* ...)] [:join (join* ...)] ...],
         ;; returns map {:where (where* ...), :join (join* ...), ...}
         env# (apply hash-map (apply concat env*))]
-    
     `(select* ~(str table-name)  ~env#)))
 
 
@@ -209,6 +208,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TBD: Implement the following macros
 ;;
+(defn helper-name* [table-name group-name]
+  (.toLowerCase (str "select" "-" group-name "-" table-name)))
+
+(defn create-select-queries* [table-name flds]
+  (let [flds# (mapv keyword flds)]
+    `(let [~(symbol (str table-name "-fields-var")) ~flds#]
+       (select ~table-name ~(cons 'fields flds#)))))
 
 (defmacro group [name & body]
   ;; Пример
@@ -222,27 +228,17 @@
   ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
   ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
   
-  (defn helper-name* [table-name]
-    (.toLowerCase (str "select" "-" name "-" table-name)))
-  
-  (defn create-helpers* [table-name fields]
-    `(def ~(symbol (helper-name* table-name)) 1))
-  
-  (let [env# (loop [perms body, res []]
+  (let [env# (loop [perms body, res {}]
                (let [[table-name _ fields] (take 3 perms)
                      nxt (drop 3 perms)]
-                 (if (empty? nxt)
+                 (if (empty? perms)
                    res
-                  (recur nxt (conj res [(list 'quote table-name) (list 'quote fields)])))))]
-    `(doseq [item# ~env#] (apply create-helpers* item#))))
-
-(group Agent
-         proposal -> [person, phone, address, price]
-         agents -> [clients_id, proposal_id, agent])
-
-(macroexpand '(group Agent
-         proposal -> [person, phone, address, price]
-         agents -> [clients_id, proposal_id, agent]))
+                  (recur nxt (conj res {table-name fields})))))]
+    `(do
+       ~@(for [[table-name flds] env#]
+           `(defn ~(symbol (helper-name* table-name name)) []
+              ~(create-select-queries* table-name flds))))))
+      
 
 (let [proposal-fields-var [:all]]
   (macroexpand '(select proposal
@@ -253,7 +249,6 @@
           (limit 5)
           (offset 5))))
 
-select-agent-proposal
 
 (defmacro user [name & body]
   ;; Пример
