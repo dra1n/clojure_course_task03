@@ -208,6 +208,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TBD: Implement the following macros
 ;;
+
+(defn available-fields-name* [table-name group-name]
+  (.toLowerCase (str "-" group-name "-" table-name "-" "fields")))
+
 (defn helper-name* [table-name group-name]
   (.toLowerCase (str "select" "-" group-name "-" table-name)))
 
@@ -237,18 +241,16 @@
     `(do
        ~@(for [[table-name flds] env#]
            `(defn ~(symbol (helper-name* table-name name)) []
-              ~(create-select-queries* table-name flds))))))
-      
+              ~(create-select-queries* table-name flds)))
+       ~@(for [[table-name flds] env#]
+           `(def ~(symbol (available-fields-name* table-name name))
+              ~(mapv keyword flds))))))
 
-(let [proposal-fields-var [:all]]
-  (macroexpand '(select proposal
-          (fields :all)
-          (where {:price 11})
-          (join agents (= agents.proposal_id proposal.id))
-          (order :f3)
-          (limit 5)
-          (offset 5))))
-
+(defn perms-union* [flds]
+  (let [res (vec (set (apply concat flds)))]
+    (if (contains? res :all)
+      [:all]
+      res)))
 
 (defmacro user [name & body]
   ;; Пример
@@ -256,7 +258,53 @@
   ;;     (belongs-to Agent))
   ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
   ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
-  )
+  (defn groups-from-globals [group]
+    (filter #(re-matches
+              (re-pattern (str "^-" group "-[^-]*-fields$"))
+              (str %))
+            (keys (ns-publics *ns*))))
+  
+  (defn group-by-table [group-list]
+    (group-by #(last (re-find #"^-[^-]*-([^-]*)-fields$" (str %))) group-list))
+  
+  (let [groups (->> body first rest (map str) (map clojure.string/lower-case))
+        perms-bindings# (mapcat groups-from-globals groups)]
+    `(do
+       ~@(for [[tbl flds] (group-by-table perms-bindings#)]
+           `(def ~(symbol (str name "-" tbl "-" "fields-var")) (perms-union* ~flds))))))
+
+  (group Agent
+         proposal -> [person, phone, address, price]
+         agents -> [clients_id, proposal_id, agent])
+  
+  (group Operator
+         proposal -> [:all]
+         clients -> [:all])
+
+  (group Director
+         proposal -> [:all]
+         clients -> [:all]
+         agents -> [:all])
+  
+  (user Ivanov
+        (belongs-to Agent))
+
+  (user Sidorov
+        (belongs-to Agent))
+
+  (user Petrov
+        (belongs-to Operator))
+
+  (user Directorov
+        (belongs-to Operator,
+                    Agent,
+                    Director))
+  
+  Directorov-clients-fields-var
+  
+  Ivanov-agents-fields-var
+  
+  Petrov-clients-fields-var
 
 (defmacro with-user [name & body]
   ;; Пример
@@ -268,4 +316,39 @@
   ;;    proposal-fields-var и agents-fields-var.
   ;;    Таким образом, функция select, вызванная внутри with-user, получает
   ;;    доступ ко всем необходимым переменным вида <table-name>-fields-var.
-  )
+  (defn name-from-global [global]
+    (-> global
+        str
+        (clojure.string/replace #"^[^-]*-(.*)" (fn [a] (last a)))
+        symbol))
+  
+  (let [user-global-bindings (filter #(re-matches
+                                        (re-pattern (str name "-[^-]*-fields-var$"))
+                                        (str %))
+                               (keys (ns-publics *ns*)))]
+    `[~(name-from-global (first user-global-bindings)) (first user-global-bindings)]))
+
+  ;; Агенту можно видеть свои "предложения"
+  (macroexpand-1 (with-user Ivanov
+    (select proposal
+            (fields :person, :phone, :address, :price)
+            (join agents (= agents.proposal_id proposal.id)))))
+
+  ;; Агенту не доступны клиенты
+  (with-user Ivanov
+    (select clients
+            (fields :all)))  ;; Empty set
+
+  ;; Директор может видеть состояние задач агентов
+  (with-user Directorov
+    (select agents
+            (fields :done)
+            (where {:agent "Ivanov"})
+            (order :done :ASC)))
+
+
+
+
+
+
+
