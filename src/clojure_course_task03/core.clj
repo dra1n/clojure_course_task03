@@ -210,10 +210,16 @@
 ;;
 
 (defn available-fields-name* [table-name group-name]
-  (.toLowerCase (str "-" group-name "-" table-name "-" "fields")))
+  (->
+   (str "-" group-name "-" table-name "-" "fields")
+   .toLowerCase
+   symbol))
 
-(defn helper-name* [table-name group-name]
-  (.toLowerCase (str "select" "-" group-name "-" table-name)))
+(defn select-helper-name* [table-name group-name]
+  (->
+   (str "select" "-" group-name "-" table-name)
+   .toLowerCase
+   symbol))
 
 (defn create-select-queries* [table-name flds]
   (let [flds# (mapv keyword flds)]
@@ -240,10 +246,10 @@
                   (recur nxt (conj res {table-name fields})))))]
     `(do
        ~@(for [[table-name flds] env#]
-           `(defn ~(symbol (helper-name* table-name name)) []
+           `(defn ~(select-helper-name* table-name name) []
               ~(create-select-queries* table-name flds)))
        ~@(for [[table-name flds] env#]
-           `(def ~(symbol (available-fields-name* table-name name))
+           `(def ~(available-fields-name* table-name name)
               ~(mapv keyword flds))))))
 
 (defn perms-union* [flds]
