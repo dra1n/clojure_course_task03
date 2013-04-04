@@ -272,42 +272,6 @@
     `(do
        ~@(for [[tbl flds] (group-by-table perms-bindings#)]
            `(def ~(symbol (str name "-" tbl "-" "fields-var")) (perms-union* ~flds))))))
-
-(comment
-(group Agent
-         proposal -> [person, phone, address, price]
-         agents -> [clients_id, proposal_id, agent])
-  
-  (group Operator
-         proposal -> [:all]
-         clients -> [:all])
-
-  (group Director
-         proposal -> [:all]
-         clients -> [:all]
-         agents -> [:all])
-  
-  (user Ivanov
-        (belongs-to Agent))
-
-  (user Sidorov
-        (belongs-to Agent))
-
-  (user Petrov
-        (belongs-to Operator))
-
-  (user Directorov
-        (belongs-to Operator,
-                    Agent,
-                    Director))
-  
-  Directorov-clients-fields-var
-  
-  Ivanov-agents-fields-var
-  
-  Petrov-clients-fields-var
-
-)
   
 (defmacro with-user [name & body]
   ;; Пример
@@ -331,32 +295,3 @@
                                (keys (ns-publics *ns*)))
         env# (vec (mapcat (fn [a] [(name-from-global a) a]) user-global-bindings))]
     `(let ~env# ~@body)))
-
-
-
-(comment
-    ;`[~(name-from-global (first user-global-bindings)) (first user-global-bindings)]))
-  (macroexpand-1 '(with-user Ivanov 1))
-  ;; Агенту можно видеть свои "предложения"
-  (macroexpand-1 '(with-user Ivanov
-    (select proposal
-            (fields :person, :phone, :address, :price)
-            (join agents (= agents.proposal_id proposal.id)))))
-
-  ;; Агенту не доступны клиенты
-  (with-user Ivanov
-    (select agents
-            (fields :all)))  ;; Empty set
-
-  ;; Директор может видеть состояние задач агентов
-  (with-user Directorov
-    (select agents
-            (fields :done)
-            (where {:agent "Ivanov"})
-            (order :done :ASC)))
-)
-
-
-
-
-
