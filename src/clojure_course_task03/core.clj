@@ -273,7 +273,8 @@
        ~@(for [[tbl flds] (group-by-table perms-bindings#)]
            `(def ~(symbol (str name "-" tbl "-" "fields-var")) (perms-union* ~flds))))))
 
-  (group Agent
+(comment
+(group Agent
          proposal -> [person, phone, address, price]
          agents -> [clients_id, proposal_id, agent])
   
@@ -306,6 +307,8 @@
   
   Petrov-clients-fields-var
 
+)
+  
 (defmacro with-user [name & body]
   ;; Пример
   ;; (with-user Ivanov
@@ -325,18 +328,24 @@
   (let [user-global-bindings (filter #(re-matches
                                         (re-pattern (str name "-[^-]*-fields-var$"))
                                         (str %))
-                               (keys (ns-publics *ns*)))]
-    `[~(name-from-global (first user-global-bindings)) (first user-global-bindings)]))
+                               (keys (ns-publics *ns*)))
+        env# (vec (mapcat (fn [a] [(name-from-global a) a]) user-global-bindings))]
+    `(let ~env# ~@body)))
 
+
+
+(comment
+    ;`[~(name-from-global (first user-global-bindings)) (first user-global-bindings)]))
+  (macroexpand-1 '(with-user Ivanov 1))
   ;; Агенту можно видеть свои "предложения"
-  (macroexpand-1 (with-user Ivanov
+  (macroexpand-1 '(with-user Ivanov
     (select proposal
             (fields :person, :phone, :address, :price)
             (join agents (= agents.proposal_id proposal.id)))))
 
   ;; Агенту не доступны клиенты
   (with-user Ivanov
-    (select clients
+    (select agents
             (fields :all)))  ;; Empty set
 
   ;; Директор может видеть состояние задач агентов
@@ -345,8 +354,7 @@
             (fields :done)
             (where {:agent "Ivanov"})
             (order :done :ASC)))
-
-
+)
 
 
 
